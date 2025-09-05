@@ -1,7 +1,7 @@
 /* eslint-disable no-console, @typescript-eslint/no-explicit-any, @typescript-eslint/no-non-null-assertion */
 
 import { AdminConfig } from './admin.types';
-import { EpisodeSkipConfig, Favorite, IStorage, PlayRecord, UserSettings } from './types';
+import { EpisodeSkipConfig, Favorite, IStorage, PlayRecord, User, UserSettings } from './types';
 
 // 搜索历史最大条数
 const SEARCH_HISTORY_LIMIT = 20;
@@ -428,14 +428,18 @@ export class D1Storage implements IStorage {
   }
 
   // 用户列表
-  async getAllUsers(): Promise<string[]> {
+  async getAllUsers(): Promise<User[]> {
     try {
       const db = await this.getDatabase();
       const result = await db
-        .prepare('SELECT username FROM users ORDER BY created_at ASC')
-        .all<{ username: string }>();
+        .prepare('SELECT username, role, created_at FROM users ORDER BY created_at ASC')
+        .all<{ username: string; role?: string; created_at?: string }>();
 
-      return result.results.map((row) => row.username);
+      return result.results.map((row) => ({
+        username: row.username,
+        role: row.role,
+        created_at: row.created_at
+      }));
     } catch (err) {
       console.error('Failed to get all users:', err);
       throw err;
@@ -447,7 +451,8 @@ export class D1Storage implements IStorage {
     try {
       const db = await this.getDatabase();
       const result = await db
-        .prepare('SELECT config FROM admin_config WHERE id = 1')
+        .prepare('SELECT config_value as config FROM admin_configs WHERE config_key = ? LIMIT 1')
+        .bind('main_config')
         .first<{ config: string }>();
 
       if (!result) return null;
@@ -464,9 +469,9 @@ export class D1Storage implements IStorage {
       const db = await this.getDatabase();
       await db
         .prepare(
-          'INSERT OR REPLACE INTO admin_config (id, config) VALUES (1, ?)'
+          'INSERT OR REPLACE INTO admin_configs (config_key, config_value, description) VALUES (?, ?, ?)'
         )
-        .bind(JSON.stringify(config))
+        .bind('main_config', JSON.stringify(config), '主要管理员配置')
         .run();
     } catch (err) {
       console.error('Failed to set admin config:', err);
